@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   runApp(const YoldaDriverApp());
@@ -77,6 +79,28 @@ class MainNavigationFlow extends StatefulWidget {
 }
 
 class _MainNavigationFlowState extends State<MainNavigationFlow> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  String _filterType = 'all'; // 'all', 'electric', 'fuel'
+  String _sortType = 'default'; // 'default', 'charge'
+
+  List<MockCar> get _filteredCars {
+    List<MockCar> list = List.from(_cars);
+    if (_filterType == 'electric') {
+      list = list.where((car) => car.isElectric).toList();
+    } else if (_filterType == 'fuel') {
+      list = list.where((car) => !car.isElectric).toList();
+    }
+    
+    if (_sortType == 'charge') {
+      list.sort((a, b) {
+        int chargeA = int.tryParse(a.charge.replaceAll('%', '')) ?? 0;
+        int chargeB = int.tryParse(b.charge.replaceAll('%', '')) ?? 0;
+        return chargeB.compareTo(chargeA);
+      });
+    }
+    return list;
+  }
+
   DriverAppScreen _currentScreen = DriverAppScreen.authPhone;
   final TextEditingController _phoneController = TextEditingController(text: "+998 ");
   final TextEditingController _smsController = TextEditingController();
@@ -139,6 +163,250 @@ class _MainNavigationFlowState extends State<MainNavigationFlow> {
     _smsController.dispose();
     _chatInputController.dispose();
     super.dispose();
+  }
+
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Фильтр автопарка",
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  const Text(
+                    "Тип автомобиля",
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildFilterChip(
+                          label: "Все",
+                          isSelected: _filterType == 'all',
+                          onTap: () {
+                            setModalState(() {
+                              _filterType = 'all';
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildFilterChip(
+                          label: "Электро",
+                          isSelected: _filterType == 'electric',
+                          onTap: () {
+                            setModalState(() {
+                              _filterType = 'electric';
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildFilterChip(
+                          label: "ДВС",
+                          isSelected: _filterType == 'fuel',
+                          onTap: () {
+                            setModalState(() {
+                              _filterType = 'fuel';
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  const Text(
+                    "Сортировка",
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildFilterChip(
+                          label: "По умолчанию",
+                          isSelected: _sortType == 'default',
+                          onTap: () {
+                            setModalState(() {
+                              _sortType = 'default';
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildFilterChip(
+                          label: "По заряду",
+                          isSelected: _sortType == 'charge',
+                          onTap: () {
+                            setModalState(() {
+                              _sortType = 'charge';
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {});
+                      Navigator.pop(context);
+                      
+                      String filterMsg = "Фильтр: ";
+                      if (_filterType == 'all') filterMsg += "Все автомобили";
+                      if (_filterType == 'electric') filterMsg += "Электромобили";
+                      if (_filterType == 'fuel') filterMsg += "ДВС (Бензин/Газ)";
+                      
+                      if (_sortType == 'charge') filterMsg += " (сорт. по заряду)";
+                      
+                      _showNotification(filterMsg);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      "Применить",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip({required String label, required bool isSelected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTripHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            "История поездок",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                _buildTripHistoryItem("07 июля 2026", "BYD Song Plus EV", "01 Z 885 ZZ", "18 км · 42 мин", "84 000 сум"),
+                _buildTripHistoryItem("06 июля 2026", "Chevrolet Cobalt LT", "01 A 777 QA", "34 км · 1ч 12мин", "72 000 сум"),
+                _buildTripHistoryItem("04 июля 2026", "Chevrolet Nexia 3", "01 B 214 KX", "12 км · 25 мин", "22 500 сум"),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text(
+                "Закрыть",
+                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTripHistoryItem(String date, String model, String plate, String duration, String cost) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(date, style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+              Text(cost, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(model, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(plate, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Color(0xFF64748B))),
+              Text(duration, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _startTrip() {
@@ -616,50 +884,203 @@ class _MainNavigationFlowState extends State<MainNavigationFlow> {
     if (limitPercent > 1.0) limitPercent = 1.0;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Zoomable & Scrollable Tashkent Vector Map
-          Positioned.fill(
-            child: InteractiveViewer(
-              minScale: 1.0,
-              maxScale: 4.0,
-              boundaryMargin: const EdgeInsets.all(500),
-              child: GestureDetector(
-                onTapDown: (details) {
-                  // Determine screen coordinates relative to container width/height
-                  final RenderBox renderBox = context.findRenderObject() as RenderBox;
-                  final size = renderBox.size;
-                  final tapX = details.localPosition.dx / size.width;
-                  final tapY = details.localPosition.dy / size.height;
-
-                  // Find closest car within radius
-                  MockCar? closestCar;
-                  double minDist = 0.15; // tap threshold radius
-
-                  for (var car in _cars) {
-                    final double dx = car.x - tapX;
-                    final double dy = car.y - tapY;
-                    final double dist = dx * dx + dy * dy;
-                    if (dist < minDist) {
-                      minDist = dist;
-                      closestCar = car;
-                    }
-                  }
-
-                  if (closestCar != null) {
-                    setState(() {
-                      _selectedCar = closestCar;
-                    });
-                  }
-                },
-                child: CustomPaint(
-                  size: const Size(double.infinity, double.infinity),
-                  painter: TashkentMapPainter(
-                    cars: _cars,
-                    selectedCar: _selectedCar,
+      key: _scaffoldKey,
+      drawer: Drawer(
+        backgroundColor: const Color(0xFFF8FAFC),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F172A),
+              ),
+              currentAccountPicture: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: const Text(
+                  "АЮ",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
               ),
+              accountName: const Text(
+                "Александр Юсупов",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              accountEmail: Row(
+                children: const [
+                  Icon(Icons.star, color: Colors.amber, size: 16),
+                  SizedBox(width: 4),
+                  Text(
+                    "4.95 · Личный водитель",
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.business, color: Color(0xFF0F172A), size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          "ООО «Uzum Market»",
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Лимит B2B:", style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                        Text(
+                          "${NumberFormat('#,##0', 'ru').format(_userLimit)} сум",
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Доступно:", style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                        Text(
+                          "${NumberFormat('#,##0', 'ru').format(_userLimit - _userSpent)} сум",
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.map_outlined, color: Color(0xFF0F172A)),
+              title: const Text("Карта и бронирование", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              onTap: () {
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history, color: Color(0xFF0F172A)),
+              title: const Text("История поездок", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              onTap: () {
+                Navigator.pop(context);
+                _showTripHistoryDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline, color: Color(0xFF0F172A)),
+              title: const Text("Служба поддержки", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _currentScreen = DriverAppScreen.supportChat;
+                });
+              },
+            ),
+            const Spacer(),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text("Выйти из аккаунта", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _currentScreen = DriverAppScreen.authPhone;
+                });
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+      body: Stack(
+        children: [
+          // Real Interactive Map (OpenStreetMap with Leaflet)
+          Positioned.fill(
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: LatLng(41.311081, 69.240562),
+                initialZoom: 13.0,
+                onTap: (tapPosition, point) {
+                  setState(() {
+                    _selectedCar = null;
+                  });
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.yolda',
+                ),
+                MarkerLayer(
+                  markers: _filteredCars.map((car) {
+                    final isSelected = _selectedCar?.id == car.id;
+                    // Map relative coords (0.0 to 1.0) to Tashkent LatLng
+                    double lat = 41.34 - (car.y * 0.06);
+                    double lng = 69.20 + (car.x * 0.08);
+
+                    return Marker(
+                      point: LatLng(lat, lng),
+                      width: 50,
+                      height: 50,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedCar = car;
+                          });
+                        },
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            if (isSelected)
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0F172A).withOpacity(0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
           ),
 
@@ -674,7 +1095,7 @@ class _MainNavigationFlowState extends State<MainNavigationFlow> {
                 // Hamburger Menu Button
                 GestureDetector(
                   onTap: () {
-                    _showNotification("Меню настроек открыто");
+                    _scaffoldKey.currentState?.openDrawer();
                   },
                   child: Container(
                     height: 44,
@@ -737,7 +1158,7 @@ class _MainNavigationFlowState extends State<MainNavigationFlow> {
                 // Filter Button
                 GestureDetector(
                   onTap: () {
-                    _showNotification("Фильтр автопарка: Все автомобили");
+                    _showFilterBottomSheet();
                   },
                   child: Container(
                     height: 44,
